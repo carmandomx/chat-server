@@ -1,10 +1,11 @@
 const http = require("http");
 const express = require("express");
 const socketio = require("socket.io");
+const mongoose = require("mongoose");
 const cors = require("cors");
-
+const jwt = require("jsonwebtoken");
 const { addUser, removeUser, getUser, getUsersInRoom } = require("./users");
-
+const userRoutes = require("./routes/users.route");
 const router = require("./router");
 
 const app = express();
@@ -12,10 +13,28 @@ const server = http.createServer(app);
 const io = socketio(server);
 
 app.use(cors());
+app.use(express.json());
 app.use(router);
+app.use("/api/users", userRoutes);
+io.use((socket, next) => {
+  if (socket.handshake.query && socket.handshake.query.token) {
+    jwt.verify(
+      socket.handshake.query.token,
+      "some-jwt-secret",
+      (err, decoded) => {
+        if (err) return next(new Error("Authentication error"));
+        console.log(decoded);
+        socket.decoded = decoded;
 
-io.on("connect", (socket) => {
+        next();
+      }
+    );
+  } else {
+    next(new Error("Authentication error"));
+  }
+}).on("connect", (socket) => {
   socket.on("join", ({ name, room }, callback) => {
+    console.log(name, room);
     const { error, user } = addUser({ id: socket.id, name, room });
 
     if (error) return callback(error);
@@ -64,6 +83,14 @@ io.on("connect", (socket) => {
   });
 });
 
-server.listen(process.env.PORT || 5000, () =>
-  console.log(`Server has started.`)
-);
+mongoose
+  .connect(
+    "mongodb+srv://prof-quotes:1234@cluster0.7metr.mongodb.net/test?retryWrites=true&w=majority",
+    { useNewUrlParser: true, useUnifiedTopology: true }
+  )
+  .then(() => {
+    server.listen(process.env.PORT || 5000, () =>
+      console.log(`Server has started.`)
+    );
+  })
+  .catch((err) => console.log("Could not start server:", err));
